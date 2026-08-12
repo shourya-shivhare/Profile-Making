@@ -4,7 +4,6 @@ import { v4 as uuidv4 } from 'uuid';
 import {
   findSMEByEmail, findSMEById, createSMEUser, updateSMELastLogin,
   findBankAdminByEmail, findBankAdminById, createBankAdminUser, updateBankAdminLastLogin,
-  findRoleByName,
 } from '../db/queries/users.queries.js';
 import { createOtp, deleteOtpsByUserContact, findOtp, incrementOtpAttempts, deleteOtp } from '../db/queries/otps.queries.js';
 import { recordAuditLog } from '../db/queries/auditLogs.queries.js';
@@ -20,9 +19,12 @@ import {
   blacklistToken, isTokenBlacklisted,
   acquireOtpLock, releaseOtpLock,
   incrementFailedAttempts, getFailedAttempts, clearFailedAttempts,
+  redisClient,
 } from '../config/redis.js';
 import { publishEvent } from '../notifications/index.js';
 import { NOTIFICATION_EVENTS } from '../notifications/events/notificationEvents.js';
+import { sendEmail } from '../notifications/services/emailSender.service.js';
+import { otpTemplate } from '../notifications/templates/otp.template.js';
 
 
 
@@ -38,15 +40,53 @@ import { NOTIFICATION_EVENTS } from '../notifications/events/notificationEvents.
  */
 const sendMfaOtp = async (userId, email) => {
   const code = Math.floor(100000 + Math.random() * 900000).toString();
+  
+  // UNMISSABLE CONSOLE LOG FOR TESTING
+  console.log("\n\n\n");
+  console.log("🔥".repeat(40));
+  console.log(`🔥 OTP FOR ${email}: ${code} 🔥`);
+  console.log("🔥".repeat(40));
+  console.log("\n\n\n");
+
   await deleteOtpsByUserContact(userId, email);
   // Store the hash — never the plaintext code
   const codeHash = hashOtpCode(code);
   await createOtp({ user_id: userId, contact: email, code: codeHash, expiresInMs: 5 * 60 * 1000 });
 
-  // Fire-and-forget: publish to OTP queue for async email delivery
-  publishEvent(NOTIFICATION_EVENTS.AUTH_OTP_SEND, {
-    userId, email, code, expiresInMinutes: 5,
-  }).catch((err) => logger.error(`[OTP Publish] Failed: ${err.message}`));
+  // Try async queue first (RabbitMQ). If unavailable, fall back to direct send.
+  try {
+    await publishEvent(NOTIFICATION_EVENTS.AUTH_OTP_SEND, {
+      userId, email, code, expiresInMinutes: 5,
+    });
+  } catch (mqErr) {
+    logger.warn(`[OTP] RabbitMQ unavailable (${mqErr.message}) — sending email directly.`);
+    
+    // In dev mode, always print the OTP so the developer can see it instantly
+    if (process.env.NODE_ENV !== 'production') {
+      logger.warn(`=================================================`);
+      logger.warn(`[OTP] DEV MODE — OTP code for ${email} is: ${code}`);
+      logger.warn(`=================================================`);
+    }
+
+    try {
+      const emailContent = otpTemplate({ code, expiresInMinutes: 5 });
+      await sendEmail({
+        to: email,
+        subject: emailContent.subject,
+        html: emailContent.html,
+        correlationId: `direct_${userId}_${Date.now()}`,
+      });
+      logger.info(`[OTP] Direct email sent to ${email}`);
+    } catch (emailErr) {
+      // Still don't throw — OTP is in DB; user can request resend.
+      // Log plaintext code only in development so devs can test locally.
+      logger.error(`[OTP] Direct email also failed: ${emailErr.message}`);
+      if (process.env.NODE_ENV !== 'production') {
+        logger.warn(`[OTP] DEV MODE — OTP for ${email}: ${code}`);
+      }
+    }
+  }
+
   return code;
 };
 
@@ -58,12 +98,11 @@ export const registerSME = async (data, _ipAddress, _userAgent) => {
   const existing = await findSMEByEmail(email);
   if (existing) { throw ApiError.conflict('An account with this email already exists'); }
 
-  const role = await findRoleByName('sme_applicant');
-  if (!role) { throw ApiError.internal('Default role not found. Please run database migration.'); }
-
   const password_hash = await argon2.hash(password);
 
-  const user = await createSMEUser({ full_name, business_name, phone, email, password_hash, role_id: role.id, address });
+  // role_id is optional — the user's role is determined by which table they
+  // are in (sme_users) and encoded directly in the JWT (`role: 'sme'`).
+  const user = await createSMEUser({ full_name, business_name, phone, email, password_hash, role_id: null, address });
 
   logger.info(`SME registered: ${email}`);
 
@@ -72,34 +111,55 @@ export const registerSME = async (data, _ipAddress, _userAgent) => {
 
   return { mfaRequired: true, tempToken, user: sanitizeUser(user, 'sme') };
 };
+export const loginSME = async ({ email, password }, ipAddress) => {
+  try {
+    const attempts = await getFailedAttempts(email, ipAddress);
+    if (attempts >= 5) {
+      throw ApiError.tooManyRequests(
+        'Account locked due to too many failed attempts. Try again in 15 minutes.'
+      );
+    }
 
-export const loginSME = async ({ email, password }, ipAddress, userAgent) => {
-  const attempts = await getFailedAttempts(email, ipAddress);
-  if (attempts >= 5) { throw ApiError.tooManyRequests('Account locked due to too many failed attempts. Try again in 15 minutes.'); }
+    const user = await findSMEByEmail(email, true);
+    if (!user) {
+      throw ApiError.unauthorized('Invalid email or password');
+    }
 
-  const user = await findSMEByEmail(email, true);
-  if (!user) { throw ApiError.unauthorized('Invalid email or password'); }
-  if (!user.is_active) { throw ApiError.forbidden('Your account has been deactivated. Contact support.'); }
+    if (!user.is_active) {
+      throw ApiError.forbidden(
+        'Your account has been deactivated. Contact support.'
+      );
+    }
 
-  const isMatch = await argon2.verify(user.password_hash, password);
-  if (!isMatch) {
-    await incrementFailedAttempts(email, ipAddress);
-    throw ApiError.unauthorized('Invalid email or password');
+    const isMatch = await argon2.verify(user.password_hash, password);
+    if (!isMatch) {
+      await incrementFailedAttempts(email, ipAddress);
+      throw ApiError.unauthorized('Invalid email or password');
+    }
+
+    await clearFailedAttempts(email, ipAddress);
+
+    await sendMfaOtp(user.id, email);
+
+    const tempToken = generateMfaToken({
+      id: user.id,
+      email,
+      role: 'sme',
+    });
+
+    logger.info(`SME login phase 1 passed: ${email}, MFA pending`);
+
+    return { mfaRequired: true, tempToken };
+  } catch (err) {
+    logger.error('loginSME failed', {
+      message: err.message,
+      stack: err.stack,
+      error: err,
+    });
+
+    throw err;
   }
-
-  await clearFailedAttempts(email, ipAddress);
-  await updateSMELastLogin(user.id);
-
-  const payload = buildTokenPayload(user, 'sme');
-  const jti = uuidv4();
-  const accessToken  = generateAccessToken(payload, jti);
-  const refreshToken = generateRefreshToken({ id: user.id }, jti);
-  await setSession(jti, { userId: user.id, email: user.email, role: 'sme', ipAddress, userAgent, createdAt: new Date() });
-
-  logger.info(`SME logged in: ${email}`);
-  return { user: sanitizeUser(user, 'sme'), accessToken, refreshToken };
 };
-
 
 
 export const registerBankAdmin = async (data) => {
@@ -108,12 +168,11 @@ export const registerBankAdmin = async (data) => {
   const existing = await findBankAdminByEmail(email);
   if (existing) { throw ApiError.conflict('An account with this email already exists'); }
 
-  const role = await findRoleByName('bank_underwriter');
-  if (!role) { throw ApiError.internal('Default role not found. Please run database migration.'); }
-
   const password_hash = await argon2.hash(password);
 
-  const user = await createBankAdminUser({ bank_name, branch_name, branch_address, ifsc_code, admin_name, email, phone, password_hash, role_id: role.id });
+  // role_id is optional — the user's role is determined by which table they
+  // are in (bank_admin_users) and encoded directly in the JWT (`role: 'bank_admin'`).
+  const user = await createBankAdminUser({ bank_name, branch_name, branch_address, ifsc_code, admin_name, email, phone, password_hash, role_id: null });
 
   logger.info(`Bank admin registered: ${email}`);
 
@@ -259,9 +318,61 @@ export const refreshAccessToken = async (refreshToken, ipAddress, userAgent) => 
 
 
 export const logout = async (accessTokenPayload) => {
-  if (accessTokenPayload?.sessionId) {
-    await deleteSession(accessTokenPayload.sessionId);
-    await blacklistToken(accessTokenPayload.sessionId);
+  // The sessionId in the JWT payload equals the JTI of the refresh token
+  // (set when verifyMfaOTP creates the session). Both the session AND the
+  // JTI must be invalidated so that neither the access token nor the refresh
+  // token can be reused after logout.
+  const sid = accessTokenPayload?.sessionId;
+  if (sid) {
+    try {
+      await Promise.all([
+        deleteSession(sid),
+        blacklistToken(sid),
+      ]);
+    } catch (err) {
+      logger.error(`[logout] Failed to invalidate session ${sid}: ${err.message}`);
+    }
   }
   return true;
+};
+
+
+
+/**
+ * Resend MFA OTP — verifies the existing temp token, enforces a per-user
+ * resend rate limit (max 3 resends per 10 minutes), then issues a fresh
+ * OTP and returns a new temp token.
+ */
+export const resendMfaOtp = async (tempToken, _ipAddress) => {
+  if (!tempToken) { throw ApiError.badRequest('MFA session token is required'); }
+
+  let decoded;
+  try { decoded = verifyMfaToken(tempToken); }
+  catch { throw ApiError.unauthorized('Invalid or expired MFA session. Please login again.'); }
+
+  const { id, email, role } = decoded;
+
+  // Rate-limit resend: max 3 per 10 minutes per user
+  const resendKey = `otp:resend:${id}`;
+  let resendCount = 0;
+  try {
+    resendCount = await redisClient?.incr(resendKey) ?? 0;
+    if (resendCount === 1 && redisClient) {
+      await redisClient.expire(resendKey, 10 * 60);
+    }
+  } catch { /* Redis unavailable — allow resend */ }
+
+  if (resendCount > 3) {
+    throw ApiError.tooManyRequests('Too many resend attempts. Please login again in 10 minutes.');
+  }
+
+  // Delete old OTPs and send a fresh one
+  await deleteOtpsByUserContact(id, email);
+  await sendMfaOtp(id, email);
+
+  // Issue a fresh 5-minute temp token (resets expiry)
+  const newTempToken = generateMfaToken({ id, email, role });
+
+  logger.info(`OTP resent for user ${email} (attempt ${resendCount})`);
+  return { tempToken: newTempToken };
 };

@@ -1,5 +1,5 @@
 import logger from '../utils/logger.js';
-import ApiError from '../utils/ApiError.js';
+import { ApiError } from '../utils/ApiError.js';
 
 
 
@@ -13,7 +13,7 @@ import ApiError from '../utils/ApiError.js';
 
 
 
-const errorHandler = (err, req, res, next) => {
+const errorHandler = (err, req, res, _next) => {
   let error = err;
 
   
@@ -56,8 +56,17 @@ const errorHandler = (err, req, res, next) => {
   
   if (!(error instanceof ApiError)) {
     const statusCode = error.statusCode || 500;
+    
+    // Add inner cause to message if it exists (e.g. for fetch failures)
+    let errMessage = error.message;
+    if (error.cause) {
+      errMessage += ` (Cause: ${error.cause.message || error.cause.code})`;
+    }
+
     const message =
-      error.isOperational ? error.message : 'An unexpected error occurred';
+      error.isOperational || process.env.NODE_ENV === 'development'
+        ? errMessage
+        : 'An unexpected error occurred';
     error = new ApiError(statusCode, message);
   }
 

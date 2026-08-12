@@ -1,14 +1,17 @@
 import logger from '../utils/logger.js';
+import { sendEmail as realSendEmail } from '../notifications/services/emailSender.service.js';
 
 export const EmailService = {
   
   async sendEmail({ to, subject, html }) {
-    logger.info(`[Email Service] SIMULATED EMAIL SENT to: ${to}`);
-    logger.info(`[Email Service] Subject: ${subject}`);
-    logger.info(`[Email Service] Content Snippet: ${html.replace(/<[^>]*>/g, '').slice(0, 200)}...`);
-    return { success: true, messageId: `sim_${Date.now()}` };
+    logger.info(`[Email Service] Sending email to: ${to} (Subject: ${subject})`);
+    return await realSendEmail({
+      to,
+      subject,
+      html,
+      correlationId: `svc_${Date.now()}`
+    });
   },
-
   
   async sendMissingInfoRequest(smeUser, loan, missingFieldsList) {
     const subject = `ACTION REQUIRED: Missing Information for Loan Application ${loan.appId}`;

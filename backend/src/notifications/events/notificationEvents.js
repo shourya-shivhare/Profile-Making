@@ -6,7 +6,8 @@
  */
 export const NOTIFICATION_EVENTS = Object.freeze({
   // ── Authentication ────────────────────────────────────────────────────────
-  AUTH_OTP_SEND: 'auth.otp.send',
+  AUTH_OTP_SEND: 'otp.send',
+
 
   // ── Loan Status Transitions ───────────────────────────────────────────────
   LOAN_SUBMITTED:           'loan.status.submitted',

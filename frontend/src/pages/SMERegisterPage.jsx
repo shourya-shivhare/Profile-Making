@@ -196,11 +196,15 @@ export default function SMERegisterPage() {
                   className={`w-full bg-white/5 border rounded-xl pl-10 pr-11 py-3 text-white placeholder-slate-400 text-sm focus:outline-none focus:ring-2 transition-all ${errors.password ? 'border-red-500/50 focus:ring-red-500/30' : 'border-white/10 focus:ring-blue-500/30 focus:border-blue-500/50'}`}
                   {...register('password', {
                     required: 'Password is required',
+<<<<<<< HEAD
                     minLength: { value: 12, message: 'At least 12 characters' },
+=======
+                    minLength: { value: 12, message: 'At least 12 characters required' },
+>>>>>>> 2023c9927b67464e57ae80cbe3544bc792123022
                     validate: {
-                      hasUpper: (v) => /[A-Z]/.test(v) || 'Needs uppercase letter',
+                      hasUpper: (v) => /[A-Z]/.test(v) || 'Needs an uppercase letter',
                       hasNumber: (v) => /[0-9]/.test(v) || 'Needs a number',
-                      hasSpecial: (v) => /[^A-Za-z0-9]/.test(v) || 'Needs special character',
+                      hasSpecial: (v) => /[^A-Za-z0-9]/.test(v) || 'Needs a special character',
                     },
                   })}
                 />

@@ -1,4 +1,3 @@
-import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Building2, Landmark, ArrowRight, ShieldCheck } from 'lucide-react';
 
@@ -7,14 +6,14 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 flex flex-col items-center justify-center p-6 relative overflow-hidden">
-      {}
+      {/* Ambient background blobs */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <div className="absolute top-1/4 left-1/4 w-[500px] h-[500px] bg-blue-500/5 rounded-full blur-3xl" />
         <div className="absolute bottom-1/4 right-1/4 w-[500px] h-[500px] bg-emerald-500/5 rounded-full blur-3xl" />
       </div>
 
       <div className="relative w-full max-w-4xl flex flex-col items-center gap-12">
-        {}
+        {/* Header */}
         <div className="text-center space-y-3">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/5 border border-white/10 text-slate-400 text-xs mb-2">
             <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
@@ -28,14 +27,13 @@ export default function LoginPage() {
           </p>
         </div>
 
-        {}
+        {/* Portal cards */}
         <div className="grid md:grid-cols-2 gap-8 w-full">
-          {}
-          <div 
+          {/* SME Card */}
+          <div
             onClick={() => navigate('/sme/login')}
             className="group relative bg-white/5 backdrop-blur-xl border border-white/10 rounded-3xl p-8 hover:border-blue-500/30 hover:bg-blue-500/[0.02] cursor-pointer transition-all duration-300 shadow-xl flex flex-col justify-between"
           >
-            {}
             <div className="absolute inset-x-0 -top-px h-px bg-gradient-to-r from-transparent via-blue-500/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
 
             <div>
@@ -46,7 +44,7 @@ export default function LoginPage() {
               <p className="text-slate-400 text-sm leading-relaxed mb-6">
                 Are you a business owner seeking funding? Apply for dynamic credit lines, upload financials, and track underwriting decisions in real-time.
               </p>
-              
+
               <ul className="space-y-2 text-xs text-slate-300 mb-8">
                 <li className="flex items-center gap-2">
                   <div className="w-1.5 h-1.5 rounded-full bg-blue-400" />
@@ -69,12 +67,11 @@ export default function LoginPage() {
             </button>
           </div>
 
-          {}
-          <div 
+          {/* Bank Admin Card */}
+          <div
             onClick={() => navigate('/bank/login')}
             className="group relative bg-white/5 backdrop-blur-xl border border-white/10 rounded-3xl p-8 hover:border-emerald-500/30 hover:bg-emerald-500/[0.02] cursor-pointer transition-all duration-300 shadow-xl flex flex-col justify-between"
           >
-            {}
             <div className="absolute inset-x-0 -top-px h-px bg-gradient-to-r from-transparent via-emerald-500/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
 
             <div>
@@ -89,11 +86,11 @@ export default function LoginPage() {
               <ul className="space-y-2 text-xs text-slate-300 mb-8">
                 <li className="flex items-center gap-2">
                   <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                  Risk scoring dashboard & analysis
+                  Risk scoring dashboard &amp; analysis
                 </li>
                 <li className="flex items-center gap-2">
                   <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                  Audit logs & compliance checks
+                  Audit logs &amp; compliance checks
                 </li>
                 <li className="flex items-center gap-2">
                   <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
@@ -109,8 +106,8 @@ export default function LoginPage() {
           </div>
         </div>
 
-        {}
-        <p className="text-slate-400 text-xs">
+        {/* Footer */}
+        <p className="text-slate-500 text-xs">
           AI Loan Underwriting Platform · Multi-Tenant Isolation · Encrypted Sessions
         </p>
       </div>

@@ -1,36 +1,23 @@
-import nodemailer from 'nodemailer';
+import axios from 'axios';
 import env from '../../config/env.js';
 import logger from '../../utils/logger.js';
 
-// ── Transporter singleton ──────────────────────────────────────────────────
-let _transporter = null;
+const _isBrevoConfigured = () => !!env.SMTP_PASS;
 
-const _isSmtpConfigured = () => !!(env.SMTP_USER && env.SMTP_PASS);
-
-const _getTransporter = () => {
-  if (_transporter) return _transporter;
-
-  if (!_isSmtpConfigured()) {
-    logger.warn('[EmailSender] SMTP_USER or SMTP_PASS not set — running in SIMULATED mode');
-    return null;
+const _getSender = () => {
+  let name = 'CapitalScale';
+  let email = env.SMTP_USER || 'noreply@capitalscale.com';
+  
+  if (env.EMAIL_FROM) {
+    const match = env.EMAIL_FROM.match(/^(.*?)\s*<([^>]+)>$/);
+    if (match) {
+      name = match[1].trim();
+      email = match[2].trim();
+    } else {
+      email = env.EMAIL_FROM;
+    }
   }
-
-  _transporter = nodemailer.createTransport({
-    host: env.SMTP_HOST,
-    port: env.SMTP_PORT,
-    secure: env.SMTP_SECURE,
-    auth: {
-      user: env.SMTP_USER,
-      pass: env.SMTP_PASS,
-    },
-    // Connection pool for high throughput
-    pool: true,
-    maxConnections: 5,
-    maxMessages: 100,
-  });
-
-  logger.info(`[EmailSender] Nodemailer transporter created (${env.SMTP_HOST}:${env.SMTP_PORT})`);
-  return _transporter;
+  return { name, email };
 };
 
 // ── Exponential backoff delay ──────────────────────────────────────────────
@@ -39,7 +26,7 @@ const _backoffDelay = (retryCount) =>
 
 // ── Core send function with retry logic ────────────────────────────────────
 /**
- * Send an email with exponential backoff retry.
+ * Send an email with exponential backoff retry using Brevo HTTP API.
  *
  * @param {object} options
  * @param {string} options.to
@@ -51,32 +38,43 @@ const _backoffDelay = (retryCount) =>
  * @returns {Promise<{ success: boolean, messageId?: string }>}
  */
 export const sendEmail = async ({ to, subject, html, correlationId, retryCount = 0, maxRetries = 10 }) => {
-  const transporter = _getTransporter();
-
-  // Simulated mode — no SMTP configured
-  if (!transporter) {
+  // Simulated mode — no Brevo configured
+  if (!_isBrevoConfigured()) {
     logger.info(`[EmailSender] SIMULATED → to:${to} | subject:${subject} | correlationId:${correlationId}`);
     logger.info(`[EmailSender] HTML snippet: ${html.replace(/<[^>]*>/g, '').slice(0, 150)}...`);
     return { success: true, messageId: `sim_${Date.now()}_${correlationId}` };
   }
 
   try {
-    const info = await transporter.sendMail({
-      from: env.EMAIL_FROM,
-      to,
+    const sender = _getSender();
+    const response = await axios.post('https://api.brevo.com/v3/smtp/email', {
+      sender: {
+        name: sender.name,
+        email: sender.email
+      },
+      to: [
+        { email: to }
+      ],
       subject,
-      html,
+      htmlContent: html,
       headers: {
         'X-Correlation-Id': correlationId,
         'X-Mailer': 'CapitalScale-NotificationWorker/1.0',
-      },
+      }
+    }, {
+      headers: {
+        'api-key': env.SMTP_PASS,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      }
     });
 
-    logger.info(`[EmailSender] Sent → to:${to} | messageId:${info.messageId} | correlationId:${correlationId}`);
-    return { success: true, messageId: info.messageId };
+    logger.info(`[EmailSender] Sent via Brevo HTTP API → to:${to} | messageId:${response.data.messageId} | correlationId:${correlationId}`);
+    return { success: true, messageId: response.data.messageId };
 
   } catch (err) {
-    logger.error(`[EmailSender] Attempt ${retryCount + 1}/${maxRetries + 1} failed | to:${to} | error:${err.message} | correlationId:${correlationId}`);
+    const errorMsg = err.response ? JSON.stringify(err.response.data) : err.message;
+    logger.error(`[EmailSender] Attempt ${retryCount + 1}/${maxRetries + 1} failed | to:${to} | error:${errorMsg} | correlationId:${correlationId}`);
 
     if (retryCount < maxRetries) {
       await _backoffDelay(retryCount + 1);
@@ -85,23 +83,28 @@ export const sendEmail = async ({ to, subject, html, correlationId, retryCount =
 
     // All retries exhausted
     logger.error(`[EmailSender] All ${maxRetries + 1} attempts exhausted for ${to} | correlationId:${correlationId}`);
-    throw new Error(`Email delivery failed after ${maxRetries + 1} attempts: ${err.message}`);
+    throw new Error(`Email delivery failed after ${maxRetries + 1} attempts: ${errorMsg}`);
   }
 };
 
 /**
- * Verify SMTP transporter connectivity (call on startup).
+ * Verify Brevo API connectivity (call on startup).
  */
 export const verifySmtpConnection = async () => {
-  const transporter = _getTransporter();
-  if (!transporter) return false; // simulated mode — always ok
+  if (!_isBrevoConfigured()) return false;
+  
   try {
-    await transporter.verify();
-    logger.info('✅ SMTP connection verified');
+    await axios.get('https://api.brevo.com/v3/account', {
+      headers: {
+        'api-key': env.SMTP_PASS,
+        'Accept': 'application/json'
+      }
+    });
+    logger.info('✅ Brevo HTTP API connection verified');
     return true;
   } catch (err) {
-    logger.warn(`⚠️  SMTP verify failed: ${err.message} — emails will use simulated mode`);
-    _transporter = null; // reset so we retry simulated
+    const errorMsg = err.response ? JSON.stringify(err.response.data) : err.message;
+    logger.warn(`⚠️  Brevo HTTP API verify failed: ${errorMsg} — emails will use simulated mode`);
     return false;
   }
 };

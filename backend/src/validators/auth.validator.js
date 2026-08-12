@@ -84,6 +84,19 @@ export const loginSchema = z.object({
 
 
 
-export const refreshTokenSchema = z.object({
-  refreshToken: z.string().min(1, 'Refresh token is required').optional(),
+// ─── MFA Verification ─────────────────────────────────────────────────────────
+export const mfaVerifySchema = z.object({
+  tempToken: z.string().min(10, 'MFA session token is required'),
+  code: z
+    .string()
+    .trim()
+    .length(6, 'Verification code must be exactly 6 digits')
+    .regex(/^\d{6}$/, 'Verification code must contain only digits'),
+});
+
+
+
+// ─── OTP Resend ───────────────────────────────────────────────────────────────
+export const resendOtpSchema = z.object({
+  tempToken: z.string().min(10, 'MFA session token is required'),
 });

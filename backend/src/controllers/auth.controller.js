@@ -8,6 +8,7 @@ import {
   verifyMfaOTP,
   refreshAccessToken,
   logout as authServiceLogout,
+  resendMfaOtp,
 } from '../services/auth.service.js';
 import { setRefreshTokenCookie, clearRefreshTokenCookie } from '../utils/token.utils.js';
 import { recordAuditLog } from '../db/queries/auditLogs.queries.js';
@@ -199,4 +200,16 @@ export const logout = asyncHandler(async (req, res) => {
 
 export const getMe = asyncHandler(async (req, res) => {
   return ApiResponse.ok(req.user, 'Current user').send(res);
+});
+
+
+
+export const resendOtp = asyncHandler(async (req, res) => {
+  const { tempToken } = req.body;
+  const result = await resendMfaOtp(tempToken, req.ip);
+
+  return ApiResponse.ok(
+    { tempToken: result.tempToken },
+    'A new verification code has been sent to your email.'
+  ).send(res);
 });

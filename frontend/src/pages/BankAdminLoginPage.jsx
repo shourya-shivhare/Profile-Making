@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import {
@@ -13,18 +13,22 @@ import {
 } from 'lucide-react';
 
 import { useAuth } from '@/context/AuthContext.jsx';
-
-
+import OtpVerificationForm from '@/components/OtpVerificationForm.jsx';
 
 
 
 export default function BankAdminLoginPage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { loginBank, verifyMfa, isLoading } = useAuth();
+  const { loginBank, isLoading } = useAuth();
 
   const [showPassword, setShowPassword] = useState(false);
   const [serverError, setServerError] = useState('');
+<<<<<<< HEAD
+=======
+  const [mfaRequired, setMfaRequired] = useState(false);
+  const [tempToken, setTempToken] = useState('');
+>>>>>>> 2023c9927b67464e57ae80cbe3544bc792123022
 
   const from = location.state?.from?.pathname || '/dashboard';
 
@@ -46,18 +50,38 @@ export default function BankAdminLoginPage() {
     }
   };
 
+<<<<<<< HEAD
+=======
+  // ─── MFA Step ─────────────────────────────────────────────────────────────
+  if (mfaRequired) {
+    return (
+      <OtpVerificationForm
+        tempToken={tempToken}
+        setTempToken={setTempToken}
+        onVerifySuccess={() => navigate(from, { replace: true })}
+        onCancel={() => {
+          setMfaRequired(false);
+          setTempToken('');
+        }}
+        accentColor="emerald"
+      />
+    );
+  }
+
+  // ─── Login Step ───────────────────────────────────────────────────────────
+>>>>>>> 2023c9927b67464e57ae80cbe3544bc792123022
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-emerald-950 to-slate-900 flex items-center justify-center p-4">
-      {}
+      {/* Background blobs */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <div className="absolute -top-40 -right-40 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl" />
         <div className="absolute -bottom-40 -left-40 w-96 h-96 bg-teal-500/10 rounded-full blur-3xl" />
       </div>
 
       <div className="relative w-full max-w-md">
-        {}
+        {/* Card */}
         <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-8 shadow-2xl">
-          {}
+          {/* Header */}
           <div className="text-center mb-8">
             <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-emerald-500/20 border border-emerald-500/30 mb-4">
               <Landmark className="w-7 h-7 text-emerald-400" />
@@ -66,29 +90,29 @@ export default function BankAdminLoginPage() {
             <p className="text-slate-400 text-sm">Sign in to your underwriter account</p>
           </div>
 
-          {}
+          {/* Server error */}
           {serverError && (
-            <div className="flex items-start gap-3 bg-red-500/10 border border-red-500/20 rounded-xl p-3 mb-6">
+            <div className="flex items-start gap-3 bg-red-500/10 border border-red-500/20 rounded-xl p-3 mb-6 animate-in fade-in slide-in-from-top-1 duration-200">
               <AlertCircle className="w-4 h-4 text-red-400 mt-0.5 flex-shrink-0" />
               <p className="text-red-400 text-sm">{serverError}</p>
             </div>
           )}
 
-          {}
+          {/* Form */}
           <form onSubmit={handleSubmit(onSubmit)} noValidate className="space-y-5">
-            {}
+            {/* Email */}
             <div className="space-y-1.5">
               <label htmlFor="bank-email" className="block text-sm font-medium text-slate-300">
                 Work Email address
               </label>
               <div className="relative">
-                <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300" />
+                <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                 <input
                   id="bank-email"
                   type="email"
                   autoComplete="email"
                   placeholder="name@bankpartner.com"
-                  className={`w-full bg-white/5 border rounded-xl pl-10 pr-4 py-3 text-white placeholder-slate-400 text-sm focus:outline-none focus:ring-2 transition-all ${
+                  className={`w-full bg-white/5 border rounded-xl pl-10 pr-4 py-3 text-white placeholder-slate-500 text-sm focus:outline-none focus:ring-2 transition-all ${
                     errors.email
                       ? 'border-red-500/50 focus:ring-red-500/30'
                       : 'border-white/10 focus:ring-emerald-500/30 focus:border-emerald-500/50'
@@ -104,19 +128,19 @@ export default function BankAdminLoginPage() {
               )}
             </div>
 
-            {}
+            {/* Password */}
             <div className="space-y-1.5">
               <label htmlFor="bank-password" className="block text-sm font-medium text-slate-300">
                 Password
               </label>
               <div className="relative">
-                <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300" />
+                <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                 <input
                   id="bank-password"
                   type={showPassword ? 'text' : 'password'}
                   autoComplete="current-password"
-                  placeholder="••••••••"
-                  className={`w-full bg-white/5 border rounded-xl pl-10 pr-11 py-3 text-white placeholder-slate-400 text-sm focus:outline-none focus:ring-2 transition-all ${
+                  placeholder="••••••••••••"
+                  className={`w-full bg-white/5 border rounded-xl pl-10 pr-11 py-3 text-white placeholder-slate-500 text-sm focus:outline-none focus:ring-2 transition-all ${
                     errors.password
                       ? 'border-red-500/50 focus:ring-red-500/30'
                       : 'border-white/10 focus:ring-emerald-500/30 focus:border-emerald-500/50'
@@ -126,8 +150,9 @@ export default function BankAdminLoginPage() {
                 <button
                   type="button"
                   onClick={() => setShowPassword((v) => !v)}
-                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-300 hover:text-slate-300 transition-colors"
+                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 transition-colors"
                   tabIndex={-1}
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
                 >
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
@@ -137,7 +162,7 @@ export default function BankAdminLoginPage() {
               )}
             </div>
 
-            {}
+            {/* Submit */}
             <button
               id="bank-login-btn"
               type="submit"
@@ -158,10 +183,10 @@ export default function BankAdminLoginPage() {
             </button>
           </form>
 
-          {}
+          {/* Footer links */}
           <div className="mt-6 text-center space-y-2">
-            <p className="text-slate-300 text-sm">
-              Don't have a partner account?{' '}
+            <p className="text-slate-400 text-sm">
+              Don&apos;t have a partner account?{' '}
               <Link
                 to="/bank/register"
                 className="text-emerald-400 hover:text-emerald-300 font-medium transition-colors"
@@ -169,7 +194,7 @@ export default function BankAdminLoginPage() {
                 Register your branch
               </Link>
             </p>
-            <p className="text-slate-400 text-xs">
+            <p className="text-slate-500 text-xs">
               SME applicant?{' '}
               <Link
                 to="/sme/login"
@@ -181,9 +206,8 @@ export default function BankAdminLoginPage() {
           </div>
         </div>
 
-        {}
-        <p className="text-center text-slate-400 text-xs mt-6">
-          AI Loan Underwriting Platform · Secure & Encrypted
+        <p className="text-center text-slate-500 text-xs mt-6">
+          CapitalScale · Secure &amp; Encrypted · MFA Protected
         </p>
       </div>
     </div>

@@ -45,7 +45,7 @@ export const createSMEUser = async ({ full_name, business_name, phone, email, pa
     .from('sme_users')
     .insert({
       id: uuidv4(), full_name, business_name, phone, email: email.toLowerCase(), 
-      password_hash, role_id, address
+      password_hash, address, ...(role_id ? { role_id } : {})
     })
     .select('id, full_name, business_name, phone, email, role_id, address, is_active, is_verified, created_at')
     .single();
@@ -126,7 +126,7 @@ export const createBankAdminUser = async ({ bank_name, branch_name, branch_addre
     .from('bank_admin_users')
     .insert({
       id: uuidv4(), bank_name, branch_name, branch_address, ifsc_code, 
-      admin_name, email: email.toLowerCase(), phone, password_hash, role_id
+      admin_name, email: email.toLowerCase(), phone, password_hash, ...(role_id ? { role_id } : {})
     })
     .select('id, bank_name, branch_name, admin_name, email, phone, role_id, is_active, created_at')
     .single();

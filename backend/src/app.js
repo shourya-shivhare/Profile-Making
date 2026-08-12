@@ -21,12 +21,33 @@ export const createApp = () => {
 
   app.use(
     cors({
-      origin: env.NODE_ENV === 'production'
-        ? process.env.ALLOWED_ORIGINS?.split(',')
-        : ['http://localhost:3000', 'http://localhost:5173', 'https://capitalscale.vercel.app/'],
+      origin: (origin, callback) => {
+        // Allow requests with no origin (e.g. curl, mobile apps, server-to-server)
+        if (!origin) return callback(null, true);
+
+        const allowedOrigins = env.NODE_ENV === 'production'
+          ? (process.env.ALLOWED_ORIGINS?.split(',').map(o => o.trim()) ?? [
+              'https://capitalscale.vercel.app',
+            ])
+          : [
+              'http://localhost:3000',
+              'http://localhost:5173',
+              'https://capitalscale.vercel.app',
+            ];
+
+        // Strip trailing slash for comparison
+        const normalised = origin.replace(/\/$/, '');
+        if (allowedOrigins.map(o => o.replace(/\/$/, '')).includes(normalised)) {
+          callback(null, true);
+        } else {
+          callback(new Error(`CORS: Origin '${origin}' is not allowed`));
+        }
+      },
       methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-      allowedHeaders: ['Content-Type', 'Authorization'],
+      allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-ID'],
+      exposedHeaders: ['X-Request-ID'],
       credentials: true,
+      optionsSuccessStatus: 200,
     })
   );
 
@@ -38,6 +59,7 @@ export const createApp = () => {
   app.use(cookieParser());
 
 
+  app.set("trust proxy", 1);
   app.use(requestLogger);
 
 

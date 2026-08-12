@@ -1,28 +1,31 @@
 import { Check, X } from 'lucide-react';
 
+// Password requirements must match backend strongPassword schema:
+// min 12 chars, uppercase, number, special character
 export default function PasswordStrengthMeter({ password }) {
   const getStrength = (pass) => {
     let score = 0;
     if (!pass) return { score: 0, label: 'Too short', color: 'bg-slate-700' };
 
-    if (pass.length > 7) score += 1;
-    if (pass.length > 10) score += 1;
+    if (pass.length >= 12) score += 2;     // 12+ chars is worth extra
+    else if (pass.length >= 8) score += 1;
     if (/[A-Z]/.test(pass)) score += 1;
     if (/[0-9]/.test(pass)) score += 1;
     if (/[^A-Za-z0-9]/.test(pass)) score += 1;
 
-    if (score < 2) return { score, label: 'Weak', color: 'bg-red-500' };
-    if (score < 4) return { score, label: 'Fair', color: 'bg-amber-400' };
-    return { score, label: 'Strong', color: 'bg-emerald-500' };
+    if (score < 2) return { score, label: 'Weak',   color: 'bg-red-500' };
+    if (score < 4) return { score, label: 'Fair',   color: 'bg-amber-400' };
+    if (score < 5) return { score, label: 'Good',   color: 'bg-blue-400' };
+    return           { score, label: 'Strong', color: 'bg-emerald-500' };
   };
 
   const strength = getStrength(password);
-  
+
   const rules = [
-    { label: 'At least 8 characters', met: (password || '').length >= 8 },
-    { label: 'One uppercase letter', met: /[A-Z]/.test(password || '') },
-    { label: 'One number', met: /[0-9]/.test(password || '') },
-    { label: 'One special character', met: /[^A-Za-z0-9]/.test(password || '') },
+    { label: 'At least 12 characters', met: (password || '').length >= 12 },
+    { label: 'One uppercase letter',   met: /[A-Z]/.test(password || '') },
+    { label: 'One number',             met: /[0-9]/.test(password || '') },
+    { label: 'One special character',  met: /[^A-Za-z0-9]/.test(password || '') },
   ];
 
   return (
@@ -31,13 +34,13 @@ export default function PasswordStrengthMeter({ password }) {
         <span className="text-slate-400">Password Strength:</span>
         <span className={strength.color.replace('bg-', 'text-')}>{strength.label}</span>
       </div>
-      
+
       <div className="flex gap-1 h-1.5">
         {[0, 1, 2, 3].map((index) => (
-          <div 
+          <div
             key={index}
             className={`flex-1 rounded-full transition-all duration-500 ${
-              index < Math.min(strength.score, 4) ? strength.color : 'bg-slate-700/30'
+              index < Math.min(Math.ceil(strength.score / 1.25), 4) ? strength.color : 'bg-slate-700/30'
             }`}
           />
         ))}

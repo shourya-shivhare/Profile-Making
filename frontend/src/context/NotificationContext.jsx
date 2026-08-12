@@ -38,7 +38,11 @@ export const NotificationProvider = ({ children }) => {
     if (!accessToken || !user) return;
     if (eventSourceRef.current) return; // Already connected
 
-    const baseURL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api/v1';
+    // SSE requires an absolute URL — relative paths don't work with EventSource.
+    // In dev we connect directly to the backend (bypassing Vite proxy which
+    // doesn't support streaming/SSE well). In production we use the env var.
+    const baseURL = import.meta.env.VITE_API_BASE_URL ||
+      (import.meta.env.DEV ? 'http://localhost:5000/api/v1' : 'https://capitalscale-backend.onrender.com/api/v1');
     const url = `${baseURL}/notifications/sse?token=${accessToken}`;
     
     const eventSource = new EventSource(url, { withCredentials: true });

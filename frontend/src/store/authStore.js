@@ -60,8 +60,9 @@ export const useAuthStore = create(
         },
       }),
       {
-        name: 'ai-loan-auth',
-        
+        name: 'capitalscale-auth',
+        // Only persist the user object — the access token is intentionally
+        // kept in memory only for security (never touches localStorage).
         partialize: (state) => ({ user: state.user }),
       }
     ),

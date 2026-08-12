@@ -1,6 +1,4 @@
-import { useEffect } from 'react'; // if useEffect is used, otherwise remove line or import what is used
 import { Routes, Route, Navigate } from 'react-router-dom';
-
 
 import LoginPage from '@/pages/LoginPage';
 import SMELoginPage from '@/pages/SMELoginPage';
@@ -11,66 +9,77 @@ import UnauthorizedPage from '@/pages/UnauthorizedPage';
 import DashboardPage from '@/pages/DashboardPage';
 import LoanApplicationPage from '@/pages/LoanApplicationPage';
 
-
 import ProtectedRoute from '@/components/ProtectedRoute';
 import { useAuth } from '@/context/AuthContext';
 
 
+/**
+ * GuestRoute — redirects already-authenticated users to the dashboard.
+ * During session hydration (isInitializing) it renders the login page
+ * immediately to avoid a full-screen spinner flash on public routes.
+ */
+function GuestRoute({ children }) {
+  const { isAuthenticated, isInitializing } = useAuth();
 
+  // While initializing, let the page render (no redirect yet).
+  // This avoids a flash where an authenticated user briefly sees the
+  // login form before being sent to /dashboard.
+  if (isInitializing) return children;
+
+  return isAuthenticated ? <Navigate to="/dashboard" replace /> : children;
+}
 
 
 function App() {
-  const { isAuthenticated } = useAuth();
-
   return (
-    <div className="min-h-screen bg-background text-foreground animate-fade-in">
+    <div className="min-h-screen bg-background text-foreground">
       <Routes>
-        {}
+        {/* ── Portal selector (root) ─────────────────────────── */}
         <Route
           path="/"
           element={
-            isAuthenticated ? <Navigate to="/dashboard" replace /> : <LoginPage />
+            <GuestRoute><LoginPage /></GuestRoute>
           }
         />
         <Route
           path="/login"
           element={
-            isAuthenticated ? <Navigate to="/dashboard" replace /> : <LoginPage />
+            <GuestRoute><LoginPage /></GuestRoute>
           }
         />
 
-        {}
+        {/* ── SME routes ─────────────────────────────────────── */}
         <Route
           path="/sme/login"
           element={
-            isAuthenticated ? <Navigate to="/dashboard" replace /> : <SMELoginPage />
+            <GuestRoute><SMELoginPage /></GuestRoute>
           }
         />
         <Route
           path="/sme/register"
           element={
-            isAuthenticated ? <Navigate to="/dashboard" replace /> : <SMERegisterPage />
+            <GuestRoute><SMERegisterPage /></GuestRoute>
           }
         />
 
-        {}
+        {/* ── Bank Admin routes ──────────────────────────────── */}
         <Route
           path="/bank/login"
           element={
-            isAuthenticated ? <Navigate to="/dashboard" replace /> : <BankAdminLoginPage />
+            <GuestRoute><BankAdminLoginPage /></GuestRoute>
           }
         />
         <Route
           path="/bank/register"
           element={
-            isAuthenticated ? <Navigate to="/dashboard" replace /> : <BankAdminRegisterPage />
+            <GuestRoute><BankAdminRegisterPage /></GuestRoute>
           }
         />
 
-        {}
+        {/* ── Public routes ──────────────────────────────────── */}
         <Route path="/unauthorized" element={<UnauthorizedPage />} />
 
-        {}
+        {/* ── Protected routes ───────────────────────────────── */}
         <Route
           path="/dashboard"
           element={
@@ -79,8 +88,6 @@ function App() {
             </ProtectedRoute>
           }
         />
-
-        {}
         <Route
           path="/loan/apply"
           element={
@@ -90,17 +97,19 @@ function App() {
           }
         />
 
-        {}
+        {/* ── 404 ────────────────────────────────────────────── */}
         <Route
           path="*"
           element={
             <div className="flex min-h-screen items-center justify-center bg-slate-950">
               <div className="text-center space-y-4">
-                <h1 className="text-4xl font-extrabold text-white">404</h1>
+                <div className="text-7xl font-extrabold text-transparent bg-clip-text bg-gradient-to-br from-blue-400 to-indigo-600">
+                  404
+                </div>
                 <p className="text-slate-400">Page not found</p>
                 <button
                   onClick={() => window.history.back()}
-                  className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm transition-all"
+                  className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-sm font-medium transition-all"
                 >
                   Go Back
                 </button>
