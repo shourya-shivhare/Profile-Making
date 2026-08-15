@@ -487,8 +487,6 @@ sequenceDiagram
     B-->>F: { newAccessToken } + Set-Cookie: newRefreshToken
 ```
 
-```
-
 ---
 
 ## Q2. Detailed Report on Socket.IO & Real-Time / Asynchronous Communication Architecture
@@ -585,10 +583,8 @@ When reprocessing loan documents in bulk, the Express backend initiates jobs wit
 The Python AI service communicates progress and results back to the Node.js backend via un-authenticated PATCH webhooks.
 
 ```
-
 [ Python AI Microservice ] ── PATCH ──> [ Express Backend Routes ] ──> [ Database Update ]
-
-````
+```
 
 1. **OCR Vectorization Callback**:
    - **Route**: `PATCH /api/v1/ocr/jobs/:jobId/vectorized` ([ocr.routes.js#L60](file:///e:/Desktop/Web%20Development/CapitalScale/backend/src/routes/v1/ocr.routes.js#L60))
@@ -612,7 +608,7 @@ To prevent high-frequency polling from triggering 429 Rate Limit errors, polling
 - **Global Rate Limiter** ([rateLimiter.js#L16](file:///e:/Desktop/Web%20Development/CapitalScale/backend/src/middleware/rateLimiter.js#L16)):
   ```javascript
   skip: (req) => req.originalUrl.includes('/queue/status')
-````
+  ```
 
 - **Request Logger** ([requestLogger.js#L23](file:///e:/Desktop/Web%20Development/CapitalScale/backend/src/middleware/requestLogger.js#L23)):
   ```javascript
@@ -1008,7 +1004,11 @@ The final curated, merged, and re-ranked chunks are injected into the context wi
 
 ---
 
-## Q5. How does the system determine the document type for chunking strategies?
+## Q5. How does the system determine the document type for chunking strategies? 
+Alternate questions :
+  - Q1. what is the biggest problem your faced and how you fixed it ? 
+  - Q2. How your rag pipeline is different than a normal rag pipeline ?
+
 
 The RAG pipeline relies on knowing the document type to apply the correct chunking strategy (e.g., preserving tables in bank statements or grouping sections in bank policies). CapitalScale determines this through a multi-tiered approach, starting at the frontend and ending with heuristic fallbacks in the AI service.
 

@@ -1,94 +1,10 @@
-# CapitalScale — Comprehensive Project Analysis Report
+# CapitalScale — Project Report
 
-> **AI-Powered SME Loan Underwriting Platform**
-> Date: 01 August 2026 | Codebase Scan: Complete
+> AI-powered SME loan underwriting platform built as a monorepo with a React frontend, Node.js/Express backend, and Python FastAPI AI services.
 
----
+## Technology Stack (Detailed)
 
-## 1. Executive Summary
-
-**CapitalScale** is a production-grade, AI-powered **SME (Small & Medium Enterprise) Loan Underwriting Platform** built as a full-stack monorepo. It automates the traditionally manual, time-consuming process of evaluating SME loan applications by leveraging:
-
-- **PaddleOCR + pdfplumber** for document text extraction
-- **Domain-aware RAG chunking strategies** for financial document intelligence
-- **Google Gemini LLM** for 30+ parameter extraction, underwriting assessment, and conversational Q&A
-- **RabbitMQ event-driven notifications** (OTP, loan status emails, in-app alerts)
-- **Server-Sent Events (SSE) + Redis Pub/Sub** for real-time, horizontally-scalable frontend push
-
-### Core Value Proposition
-
-| Problem | CapitalScale Solution |
-|---|---|
-| Manual document review takes days | PaddleOCR + pdfplumber extracts text from PDFs/images in seconds |
-| Underwriters miss financial data across docs | LLM extracts 30+ financial parameters automatically with confidence scoring |
-| Bank policy compliance is subjective | AI evaluates every parameter against bank-specific underwriting rules |
-| Communication gaps between banks & SMEs | Real-time SSE notifications + email templates for every loan status change |
-| OTP delivery is unreliable | RabbitMQ `otp_queue` (priority 10) with retry logic (up to 10 attempts) and Dead Letter Queue |
-| No audit trail for decisions | Every action logged with IP, user agent, actor ID, and timestamp |
-
----
-
-## 2. Architecture Overview
-
-The platform follows a **three-tier microservices architecture** deployed as a monorepo with npm workspaces:
-
-```mermaid
-graph TD
-    subgraph "Frontend — React + Vite (Port 3000)"
-        FE[React 18 SPA]
-        FE_AUTH[AuthContext + Zustand Store]
-        FE_NOTIF[NotificationContext — SSE + Polling]
-        FE_API[Axios API Client — Bearer + Refresh Interceptor]
-    end
-
-    subgraph "Backend — Express.js (Port 5000)"
-        BE_MW[Middleware: Helmet, CORS, RateLimiter, Auth]
-        BE_ROUTES[Versioned Routes: /api/v1/*]
-        BE_CTRL[Controllers: Auth, Loan, OCR, Extraction, Underwriting, Bank, Policy, Notification, AuditLog]
-        BE_SVC[Services: Business Logic Layer]
-        BE_NOTIF[Notifications: Publisher, Workers, SSE Manager, Templates]
-    end
-
-    subgraph "AI Services — FastAPI/Python (Port 5001)"
-        AI_OCR[PaddleOCR + pdfplumber Queue Worker]
-        AI_CHUNK[Chunking Strategy Factory]
-        AI_EXTRACT[Parameter Extraction Service]
-        AI_UW[Underwriting Assessment Engine]
-        AI_CHAT[RAG Chat Engine]
-        AI_VDB[pgvector Store + CrossEncoder Reranker]
-        AI_LLM[LLM Facade: Gemini + OpenAI]
-    end
-
-    subgraph "Data & Messaging Layer"
-        SUPA[(Supabase / PostgreSQL)]
-        REDIS[(Redis: Sessions + Blacklist + Pub/Sub + Email Rate Limit)]
-        CLOUD[(Cloudinary: Document Storage)]
-        PGVEC[(pgvector: 768-dim Embeddings)]
-        RABBIT[(RabbitMQ: otp_queue + notification_queue + DLQ)]
-    end
-
-    FE --> |HTTP/REST| BE_ROUTES
-    FE_NOTIF --> |SSE EventSource| BE_NOTIF
-    FE_API --> |Bearer JWT| BE_MW
-    BE_SVC --> |HTTP/REST + x-internal-secret| AI_OCR
-    BE_SVC --> |HTTP/REST| AI_EXTRACT
-    BE_SVC --> |HTTP/REST| AI_UW
-    BE_CTRL --> |HTTP/REST| AI_CHAT
-    BE_SVC --> SUPA
-    BE_MW --> REDIS
-    BE_NOTIF --> RABBIT
-    BE_NOTIF --> REDIS
-    BE_SVC --> CLOUD
-    AI_VDB --> PGVEC
-    AI_LLM --> |API| Gemini
-    AI_OCR --> |Callback + x-internal-secret| BE_ROUTES
-```
-
----
-
-## 3. Technology Stack (Detailed)
-
-### 3.1 Frontend
+###  Frontend
 
 | Technology | Version | Purpose |
 |---|---|---|
@@ -104,7 +20,7 @@ graph TD
 | React Markdown | 10.1.0 | Markdown rendering for AI chat responses |
 | EventSource (native) | Browser API | SSE connection in `NotificationContext.jsx` |
 
-### 3.2 Backend
+###  Backend
 
 | Technology | Version | Purpose |
 |---|---|---|
@@ -124,7 +40,7 @@ graph TD
 | express-rate-limit | 7.3.1 | API rate limiting (global, auth, OTP buckets) |
 | uuid | 11.0.0 | UUID v4 generation for JTI, correlation IDs |
 
-### 3.3 AI Services (Python)
+### AI Services (Python)
 
 | Technology | Purpose |
 |---|---|
@@ -144,7 +60,7 @@ graph TD
 | Uvicorn | ASGI server (single worker for sequential processing queue) |
 | httpx + aiohttp | Async HTTP clients for backend callbacks |
 
-### 3.4 Infrastructure
+### Infrastructure
 
 | Component | Technology | Notes |
 |---|---|---|
@@ -161,143 +77,459 @@ graph TD
 
 ---
 
-## 4. Detailed Module Breakdown
+## 1. Executive summary
 
-### 4.1 Frontend Application
+CapitalScale is a full-stack application for managing SME loan applications, from onboarding and document upload to AI-driven document processing and underwriting review. The system combines:
 
-#### 4.1.1 Routing & Pages
+- a React interface for SME and bank admin workflows
+- an Express backend for authentication, authorization, loan management, notifications, and audit logging
+- a Python AI microservice for OCR, retrieval, extraction, and underwriting
+- Redis and RabbitMQ for real-time user notifications and asynchronous tasks
+- PostgreSQL/Supabase for persistence and pgvector for document chunk storage
 
-| Route | Page | Access |
-|---|---|---|
-| `/` / `/login` | LoginPage | Public — role selection portal |
-| `/sme/login` | SMELoginPage | Public |
-| `/sme/register` | SMERegisterPage | Public |
-| `/bank/login` | BankAdminLoginPage | Public |
-| `/bank/register` | BankAdminRegisterPage | Public |
-| `/dashboard` | DashboardPage → SMEDashboard or BankAdminDashboard | Protected — role-adaptive |
-| `/loan/apply` | LoanApplicationPage | Protected — SME only |
-| `/unauthorized` | UnauthorizedPage | Public |
+The project is structured as a multi-service monorepo rather than a single app. The codebase is oriented around a real workflow that exists in the implementation:
 
-#### 4.1.2 Authentication Flow
-
-```mermaid
-sequenceDiagram
-    participant User
-    participant Frontend
-    participant Backend
-    participant RabbitMQ
-    participant Redis
-
-    User->>Frontend: Enter email + password
-    Frontend->>Backend: POST /auth/sme/login
-    Backend->>Backend: argon2.verify(password)
-    Backend->>Backend: Generate OTP + HMAC-SHA256 hash → store hash in DB
-    Backend->>RabbitMQ: publishEvent(AUTH_OTP_SEND) — priority 10
-    RabbitMQ->>Backend: otpWorker consumes, sends SMTP email
-    Backend-->>Frontend: { mfaRequired: true, tempToken (JWT_MFA_SECRET, 5m) }
-    Frontend->>User: Show OTP input screen
-    User->>Frontend: Enter 6-digit OTP
-    Frontend->>Backend: POST /auth/mfa/verify { tempToken, code }
-    Backend->>Redis: acquireOtpLock(userId) — SET NX EX 15
-    Backend->>Backend: verifyOtpCode(code, storedHash) using timingSafeEqual
-    Backend->>Redis: setSession(jti, sessionData)
-    Backend-->>Frontend: { accessToken, user } + Set-Cookie: refreshToken (httpOnly)
-    Frontend->>Frontend: accessToken in Zustand (memory only), user in localStorage
-```
-
-**Key Security Features:**
-- **Three JWT secrets** with `audience` claims — cross-token substitution attacks impossible
-- **OTP stored as HMAC-SHA256 hash** — never plaintext in DB
-- **Redis distributed lock** on OTP verification — prevents concurrent brute-force race condition
-- **Refresh token rotation** — each refresh blacklists old JTI, issues new pair
-- **Fail-safe Redis deny** — if Redis is down, all tokens treated as blacklisted
-
-#### 4.1.3 Notification Context
-
-`NotificationContext.jsx` wraps the entire app and provides:
-1. **Initial fetch** — REST `GET /api/v1/notifications` on login
-2. **SSE connection** — `EventSource` to `/api/v1/notifications/sse?token=<accessToken>` (token passed as query param since `EventSource` cannot set custom headers)
-3. **Auto-reconnect** — 5-second backoff on SSE error
-4. **Polling fallback** — `setInterval` every 30s catches any silent SSE drops
-5. **Optimistic UI** — `markAsRead` / `markAllAsRead` update local state immediately
-
-#### 4.1.4 API Client Architecture
-
-- **Request interceptor**: Auto-attaches `Authorization: Bearer <token>` from Zustand
-- **Response interceptor (401 handling)**: Mutex pattern (`isRefreshing` flag + `failedQueue`) — queues concurrent requests, refreshes once, replays all with new token
-- Auto-redirects to `/login` on refresh failure
+1. SME creates a draft or loan application
+2. SME uploads supporting documents
+3. OCR and AI extraction process uploaded files
+4. Underwriting checks evaluate the loan against bank rules
+5. Bank admin reviews the result and changes the status
+6. Notifications are sent through emails and in-app updates
 
 ---
 
-### 4.2 Backend (Express.js)
+## 2. Actual repository structure
 
-#### 4.2.1 Server Bootstrap (`server.js`)
+The repo currently contains the following code areas:
 
-Startup order:
-1. Load & validate environment via Zod (`env.js`) — hard exit on invalid config
-2. Initialize Cloudinary
-3. `initSSEManager()` — subscribes to Redis Pub/Sub for cross-instance SSE delivery
-4. `verifySmtpConnection()` — validates SMTP credentials on startup
-5. `connectRabbitMQ()` — establishes AMQP connection, asserts topology
-6. `startOTPWorker()` — begins consuming `otp_queue` (prefetch 1)
-7. `startEmailWorker()` — begins consuming `notification_queue` (prefetch 1)
-8. `startDLQProcessor()` — monitors `dead_letter_queue`
-9. `createApp()` — Express middleware stack + routes
-10. `server.listen()` — HTTP server with 600s timeout for long AI operations
-11. Graceful shutdown: `closeRabbitMQ()` + `server.close()` on SIGTERM/SIGINT
-
-#### 4.2.2 Middleware Pipeline
-
-| Order | Middleware | Purpose |
-|---|---|---|
-| 1 | Helmet | Security headers (CSP, HSTS, X-Frame-Options) |
-| 2 | CORS | Origin whitelist; credentials enabled |
-| 3 | Body Parser | JSON + URL-encoded (10MB limit) |
-| 4 | Cookie Parser | Parse httpOnly refresh token cookies |
-| 5 | Morgan | HTTP access logging (skips `/queue/status` to avoid log spam) |
-| 6 | Rate Limiter | 100 req/15min per IP; skips `/queue/status` polling endpoints |
-| 7 | Router | All `/api/v1/*` routes |
-| 8 | 404 Handler | Catch-all for undefined routes |
-| 9 | Error Handler | Centralized error formatting (JWT errors, Zod errors, ApiError) |
-
-#### 4.2.3 API Routes (v1)
-
-| Route Group | Key Endpoints | Auth |
-|---|---|---|
-| `/auth` | `POST /sme/register`, `/sme/login`, `/bank/register`, `/bank/login`, `/mfa/verify`, `/refresh`, `/logout`, `GET /me` | Varies |
-| `/loans` | CRUD, drafts, document upload/delete, status transitions, history, chat | SME / Bank Admin |
-| `/banks` | Bank account linking (OTP-verified), account management | SME |
-| `/bank-policies` | Policy CRUD, policy PDF extraction trigger | Bank Admin |
-| `/ocr` | File upload, job status, retry, stats, mark-vectorized (internal) | Auth / Internal |
-| `/extraction` | Trigger extraction, re-extract, results, status callback, missing-info callback | Bank Admin / Internal |
-| `/underwriting` | AI assessment, report, re-evaluate, policy inventory, audit logs, queue status | Bank Admin |
-| `/notifications` | `GET /`, `GET /unread-count`, `PATCH /read-all`, `PATCH /:id/read`, `GET /sse`, `GET /metrics` | Private |
-| `/audit-logs` | `GET /` | Bank Admin / Super Admin |
-
-#### 4.2.4 RBAC (Role-Based Access Control)
-
-| Role | Identifier | Access Level |
-|---|---|---|
-| SME Applicant | `sme` | Loan applications, document upload, own dashboard |
-| Bank Administrator | `bank_admin` | Loan review, AI assessment, policy management, audit logs |
-| Super Administrator | `super_admin` | Full system access including metrics |
-
-**Middleware guards:**
-- `requireSME` = `[protect, authorizeRoles('sme')]`
-- `requireBankAdmin` = `[protect, authorizeRoles('bank_admin')]`
-- `requireBankOrSuper` = `[protect, authorizeRoles('bank_admin', 'super_admin')]`
-- `requireInternalSecret` = validates `x-internal-secret` header (AI service → backend callbacks)
-
-#### 4.2.5 Notification System (Event-Driven Architecture)
-
-**RabbitMQ Topology:**
+```text
+CapitalScale/
+├── frontend/                 # React + Vite app
+├── backend/                  # Express API
+├── ai-services-python/       # FastAPI AI service
+├── README.md                 # project overview
+├── project_report.md         # reporting document
+├── render.yaml               # deployment config
+├── package.json              # root workspace config
+├── node_modules/             # installed dependencies
+├── flow_diagram.jpeg         # architecture image
+├── SME_Loan_Eligibility_and_Policies.pdf
+├── CapitalScale_Bank_SME_Loan_Policy_2025.pdf
+└── additional docs ...
 ```
-Exchange: capitalscale.notifications (topic, durable)
-├── Binding: otp.#  → otp_queue   (x-max-priority: 10, DLX-bound)
-└── Binding: loan.# → notification_queue (x-max-priority: 5, DLX-bound)
 
-Exchange: capitalscale.dlx (direct, durable)
-└── Binding: dlq → dead_letter_queue
+Important implementation note: the root `package.json` declares workspaces as `frontend`, `backend`, and `ai-services`, but the actual folder on disk is `ai-services-python`. This mismatch is real and should be treated as an operational repo inconsistency.
+
+---
+
+## 3. High-level architecture
+
+```mermaid
+flowchart LR
+    U[SME / Bank Admin User] --> FE[Frontend: React + Vite]
+    FE --> API[Backend: Express API]
+    API --> DB[(Supabase PostgreSQL)]
+    API --> REDIS[(Redis)]
+    API --> RABBIT[(RabbitMQ)]
+    API --> CLOUD[(Cloudinary)]
+    API --> AI[AI Service: FastAPI]
+    AI --> PG[(pgvector / PostgreSQL)]
+    AI --> LLM[Google Gemini / OpenAI]
+    AI --> OCR[OCR + parser stack]
+    API --> SSE[Real-time notification stream]
+```
+
+### Main architectural split
+
+- Frontend: user interface and role-based access flow
+- Backend: session auth, business logic, API gateway, notification bus, loan lifecycle
+- AI service: OCR queue, structured extraction, retrieval, embeddings, and underwriting orchestration
+
+This is not a pure microservice ecosystem in the strict sense; it behaves more like a layered application with service boundaries and async event-driven components.
+
+---
+
+## 4. Frontend application
+
+The frontend lives in `frontend/src` and is built with Vite + React.
+
+### 4.1 Key frontend modules
+
+| Area | Purpose |
+|---|---|
+| `src/App.jsx` | Route setup and guest/protected route guards |
+| `src/context/AuthContext.jsx` | login, registration, refresh, MFA flow, logout |
+| `src/context/NotificationContext.jsx` | SSE connection and notification polling |
+| `src/store/authStore.js` | Zustand auth state with persisted user and in-memory access token |
+| `src/api/` | Axios client and API modules for auth, notifications, etc. |
+| `src/pages/` | Login, dashboard, SME/bank flows, loan application page |
+| `src/components/` | reusable UI and protected route wrappers |
+
+### 4.2 Routes implemented in code
+
+The actual route map in `frontend/src/App.jsx` is:
+
+- `/` and `/login` — public portal selector
+- `/sme/login` — SME sign in
+- `/sme/register` — SME registration
+- `/bank/login` — bank admin login
+- `/bank/register` — bank admin registration
+- `/dashboard` — protected dashboard
+- `/loan/apply` — protected SME-only loan application page
+- `/unauthorized` — public unauthorized page
+
+### 4.3 Auth model in the frontend
+
+The frontend uses Zustand and a custom `AuthContext`:
+
+- `user` is persisted in localStorage
+- `accessToken` is intentionally kept in memory only
+- session hydration calls `/auth/refresh` on startup
+- refresh token is handled as an HTTP-only cookie automatically sent by the browser
+- login flows are role-aware (`sme` vs `bank_admin`)
+- MFA verification is supported through a temp token flow after login
+
+This is a security-focused design: the access token never sits in localStorage, which reduces XSS exposure.
+
+### 4.4 Notification consumer in the frontend
+
+`NotificationContext.jsx` does the following:
+
+- loads notification list via REST API
+- opens `EventSource` to `/api/v1/notifications/sse?token=...`
+- listens for incoming notification events
+- updates unread count and notification list in real time
+- falls back to polling every 30 seconds if SSE is lost
+
+This makes the app feel real-time while still being resilient to dropped streaming connections.
+
+---
+
+## 5. Backend architecture
+
+The backend is under `backend/src` and starts from `backend/server.js`.
+
+### 5.1 Startup flow
+
+The real server lifecycle is:
+
+1. validate env via `src/config/env.js`
+2. initialize Cloudinary
+3. initialize SSE manager
+4. verify SMTP connectivity
+5. connect to RabbitMQ and start workers
+6. start the Express app
+7. listen on `PORT` and set long timeout
+8. handle graceful shutdown
+
+One important behavior is that RabbitMQ is treated as optional. If RabbitMQ is unavailable, the backend still starts in direct-email fallback mode instead of crashing.
+
+### 5.2 Express app composition
+
+`backend/src/app.js` sets up:
+
+- Helmet security headers
+- CORS with allowed localhost and production origins
+- JSON and URL-encoded body parsing
+- cookie parser
+- request logger
+- global rate limiter
+- versioned API router
+- health root endpoint
+- 404 handler
+- centralized error handler
+
+### 5.3 Route groups
+
+`backend/src/routes/index.js` mounts these route groups:
+
+- `/api/health` — backend health endpoint
+- `/api/v1/auth` — login, registration, MFA, refresh, logout
+- `/api/v1/loans` — loan lifecycle, drafts, status transfer, document upload
+- `/api/v1/users` — user-related endpoints
+- `/api/v1/banks` — bank-related access
+- `/api/v1/bank-policies` — policy management routes
+- `/api/v1/ocr` — OCR job processing and monitoring
+- `/api/v1/extraction` — extraction workflow
+- `/api/v1/underwriting` — AI assessment endpoints
+- `/api/v1/audit-logs` — audit access
+- `/api/v1/notifications` — notification feeds and SSE endpoints
+
+### 5.4 Security and authorization model
+
+The backend has JWT protection using `protect` and role checks via `authorizeRoles`, with `ROLES` containing values such as:
+
+- `sme`
+- `bank_admin`
+- `super_admin`
+
+Some service logic also mentions `bank_underwriter`, but the visible frontend auth model primarily exposes `sme`, `bank_admin`, and `super_admin`.
+
+The auth layer also includes:
+
+- Redis-backed session checks
+- JWT audience segmentation
+- separate MFA secret
+- fail-safe blacklist logic
+- OTP locking to prevent race conditions on verification
+
+---
+
+## 6. Loan workflow and business logic
+
+The main business workflow is handled in `backend/src/services/loan.service.js` and `backend/src/controllers/loan.controller.js`.
+
+### 6.1 Draft and submission flow
+
+A loan follows a staged lifecycle:
+
+- `draft`
+- `submitted`
+- `eligibility_check`
+- `agent_review`
+- `missing_info`
+- `approved`
+- `rejected`
+- `disbursed`
+
+The service validates transitions and blocks invalid status changes. It also enforces bank ownership checks for bank users.
+
+### 6.2 Document upload flow
+
+The flow is more complete than a simple file upload:
+
+- SME uploads a file to a loan draft or a missing-info case
+- file is uploaded to Cloudinary
+- OCR job is triggered with metadata
+- document metadata is attached to the loan record
+- old documents are cleaned up if replaced
+- uploaded chunks may be removed from pgvector when the document is deleted
+
+This is a meaningful part of the application because the platform is not only collecting forms; it is also indexing uploaded documents for search and underwriting retrieval.
+
+### 6.3 Validation logic before submission
+
+`submitLoanApplication()` checks that required fields are filled, such as:
+
+- business information
+- financial information
+- loan parameters
+- mandatory uploaded document types
+- behavioural questions
+
+If the application is missing required fields, it returns a clear validation error before submission.
+
+### 6.4 Status transitions and notifications
+
+When a status changes, the system:
+
+- updates the loan status in the database
+- records a status history row
+- identifies the actor and model
+- publishes a notification event if relevant
+- triggers email/in-app updates for the SME or bank admin
+
+This makes the system usable as a proper operational workflow rather than only a document portal.
+
+---
+
+## 7. Notification system
+
+The notification architecture is implemented in `backend/src/notifications` and is active in real code.
+
+### 7.1 Messaging and queue setup
+
+`backend/src/config/rabbitmq.js` declares:
+
+- exchange: `capitalscale.notifications`
+- exchange: `capitalscale.dlx`
+- queue: `otp_queue`
+- queue: `notification_queue`
+- dead-letter queue: `dead_letter_queue`
+
+Priorities are configured:
+
+- OTP queue: priority 10
+- notification queue: priority 5
+
+This is real and important because the backend uses RabbitMQ for async notifications and fallback email delivery.
+
+### 7.2 Notification flow
+
+The typical flow is:
+
+- a service publishes an event
+- RabbitMQ routes it to the relevant queue
+- a worker consumes it
+- it sends SMTP email or in-app notification
+- SSE pushes the notification to the connected frontend client
+- Redis Pub/Sub supports multiple app instances
+
+### 7.3 Frontend-real-time behavior
+
+The frontend `NotificationContext` opens an SSE stream using the backend route `/api/v1/notifications/sse` and listens for new notification events in real time. This is a key user-facing feature and is explicitly wired into the app.
+
+---
+
+## 8. AI Service and processing pipeline
+
+The Python service is in `ai-services-python` and starts from `main.py`.
+
+### 8.1 FastAPI app startup
+
+The app does the following on startup:
+
+- loads environment variables
+- initializes PostgreSQL pool
+- pings the LLM service
+- starts the OCR worker
+- starts the processing queue
+
+The startup logic includes graceful degraded mode: if the database or Gemini endpoint is unavailable, the service still boots but reports degraded functionality instead of crashing.
+
+### 8.2 AI routers
+
+Actual router files present in the codebase:
+
+- `routers/ocr.py` — process and monitor OCR jobs
+- `routers/extraction.py` — run extraction jobs
+- `routers/underwriting.py` — enqueue underwriting assessment
+- `routers/chat.py` — loan and policy chat endpoints
+- `routers/queue.py` — queue management
+- `routers/embed.py` — embedding generation endpoint
+
+### 8.3 OCR and document processing
+
+The backend calls the AI service for OCR and extraction jobs. The actual OCR router accepts uploaded files and pushes them into a queue. The architecture supports:
+
+- file-based document jobs
+- tracking by `job_id`
+- retry for failed jobs
+- document metadata including `application_id`, `document_type`, and `document_url`
+
+### 8.4 Retrieval and embedding system
+
+The codebase includes:
+
+- `services/rag/` — retrieval logic and chunking
+- `services/vectordb/` — pgvector storage and search
+- `services/llm/` — LLM facade with Gemini and fallback OpenAI
+- `services/underwriting/` — underwriting rules and scoring logic
+
+This indicates the project is built to process uploaded financial documents, chunk them, embed them into pgvector, and then use LLM + retrieval to answer questions or assess risk.
+
+### 8.5 Underwriting invocation
+
+The underwriting route enqueues an assessment job and returns a `job_id` with queued status. This shows the application is designed for asynchronously processed proofing and review rather than synchronous one-shot underwriting.
+
+---
+
+## 9. Data and storage layer
+
+### 9.1 Database and storage
+
+- PostgreSQL via Supabase is used for operational and app data
+- asyncpg is used from the Python service for direct DB access
+- Cloudinary stores uploaded documents
+- pgvector stores embeddings and chunked document context
+- Redis stores JWT/session/blacklist state and notification Pub/Sub state
+
+### 9.2 Key data patterns in the codebase
+
+The application stores:
+
+- users and role metadata
+- SME and bank admin records
+- loan drafts and loan application records
+- document metadata and file URLs
+- OCR jobs and status tracking
+- status history for loans
+- notification records and audit logs
+- vectorized document chunks for retrieval
+
+This is a strong indicator that the platform is designed as a real business workflow system, not just a demo UI.
+
+---
+
+## 10. Security and resilience notes
+
+### Security controls present in code
+
+- JWT-based protected APIs
+- role-based route guards
+- OTP verification with Redis locks
+- HMAC-based OTP storage strategy
+- Cloudinary file storage rather than raw local file handling
+- CORS configuration with origin allowlist
+- request validation using Zod on the backend
+- internal secret checks for AI-to-backend callbacks
+- fail-safe token blacklist logic if Redis is down
+
+### Graceful-degradation behavior
+
+The code is designed to continue running even when certain infrastructure components are offline:
+
+- RabbitMQ can be unavailable and the server still runs
+- SMTP can fail or be absent and the app still starts
+- database connectivity issues in AI service are logged and app starts in degraded mode
+
+This is a practical reliability choice for local development and partial deployment.
+
+---
+
+## 11. Real strengths of the codebase
+
+The strongest aspects of the implementation are:
+
+- comprehensive user flow from SME application to bank decision
+- real notification pipeline with SSE and async messaging
+- Stable layered architecture across frontend/backend/AI service
+- role-aware UI and API permission checks
+- explicit handling of document lifecycle and OCR-based processing
+- use of external storage and vector search for AI-driven retrieval
+- structured audit logging and loan history support
+
+---
+
+## 12. Observed inconsistencies and gaps
+
+These are important if someone is documenting or maintaining the project:
+
+1. Root workspace config references `ai-services`, while the actual folder is `ai-services-python`.
+2. Some code comments reference older or planned behavior, while the actual app is more conservative and gracefully degrades when optional services are unavailable.
+3. Frontend exposes roles `sme`, `bank_admin`, and `super_admin`, while some backend service logic still references `bank_underwriter`.
+4. Some docs mention a more standardized microservice setup than what the actual repo daily uses; the architecture is functional and layered, but not fully isolated into independent deployable services.
+5. The AI service contains a significant amount of real functionality, especially around OCR, retrieval, and queueing, even though the exact UX for all endpoints is not fully surfaced in the frontend.
+
+---
+
+## 13. Overall assessment
+
+CapitalScale is a serious, working-style codebase for AI-assisted lending operations. It is not just a front-end mockup. It contains:
+
+- multi-role user flow
+- secure auth model
+- document upload pipeline
+- async OCR and processing queue
+- AI-assisted underwriting intent
+- notification and SSE mechanisms
+- persistence, audit trails, and operational logging
+
+The project is closer to an internal business application or prototype platform than a simple sample app. It shows real implementation work across three layers and has a clear product logic beyond UI-only screens.
+
+---
+
+## 14. Recommended next documentation improvements
+
+If this report is to be maintained long-term, the most valuable additions would be:
+
+- an exact API contract map for all routes with request/response examples
+- a sequence diagram for the full loan submission to underwriting flow
+- a database schema overview for users, loans, documents, OCR jobs, notifications, and audit logs
+- a deployment operations document covering local dev, environment variables, and service health checks
+- a clear note explaining the mismatch between workspace naming and actual folder names
+
+This would make the repository easier for new developers to onboard and easier to maintain in production.
 ```
 
 **Email Worker Flow (notification_queue):**

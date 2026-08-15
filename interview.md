@@ -60,7 +60,7 @@ INFRASTRUCTURE:
 
 ## Part 2: Authentication — Complete Working Explanation
 
-"Our authentication uses a hybrid model. We issue JWTs for stateless authentication but back them with Redis sessions so tokens can be revoked instantly. Login is a two-phase MFA process: first we verify the password with Argon2, then generate a one-time password. We never store the OTP in plaintext; we store an HMAC-SHA256 hash of it. OTP delivery is asynchronous through RabbitMQ, where an OTP worker sends the email via SMTP, keeping the login API fast. After password verification we return a short-lived MFA token with its own JWT secret and audience. Only after successful OTP verification do we issue the access token, refresh token, and create the Redis session. Using separate JWT secrets and audience claims for access, refresh, and MFA tokens prevents cross-token substitution attacks."
+#### Our authentication uses a hybrid model. We issue JWTs for stateless authentication but back them with Redis sessions so tokens can be revoked instantly. Login is a two-phase MFA process: first we verify the password with Argon2, then generate a one-time password. We never store the OTP in plaintext; we store an HMAC-SHA256 hash of it. OTP delivery is asynchronous through RabbitMQ, where an OTP worker sends the email via BRAVO, keeping the login API fast. After password verification we return a short-lived MFA token with its own JWT secret and audience. Only after successful OTP verification do we issue the access token, refresh token, and create the Redis session. Using separate JWT secrets and audience claims for access, refresh, and MFA tokens prevents cross-token substitution attacks.
 
 ### High-Level Summary
 
@@ -325,7 +325,16 @@ General max: 60 - 10 = 50 emails/min
 
 ### What is RAG and why does CapitalScale need a custom one?
 
-Standard RAG (Retrieve, Augment, Generate) retrieves relevant text chunks from a vector database and feeds them to an LLM as context. Generic implementations use tools like LangChain's `RecursiveCharacterTextSplitter` — which splits text every N characters.
+#### Standard RAG (Retrieve, Augment, Generate) retrieves relevant text chunks from a vector database and feeds them to an LLM as context. 
+#### Our document processing pipeline is fully asynchronous and RAG-based. When a user uploads a document, the Node.js backend first uploads it to Cloudinary for persistent storage and creates an ocr_jobs record with a queued status. Instead of making the user wait, it immediately returns a Job ID to the frontend.
+
+#### The AI service receives the job and places it into an asyncio.Queue, where multiple worker processes handle jobs concurrently. Each worker first performs OCR—using native PDF text extraction for digital PDFs and PaddleOCR for scanned documents.
+
+#### Once the text is extracted, we apply document-specific semantic chunking. For example, bank policies preserve clauses and exceptions, while bank statements keep entire transaction rows together. This improves retrieval accuracy by maintaining the document's logical structure.
+
+#### The chunks are then embedded using Gemini's text-embedding-004 model and stored in PostgreSQL with the pgvector extension. We use an HNSW index for fast semantic similarity search during retrieval.
+
+#### Finally, the AI service notifies the backend that vectorization is complete. If the document is a bank policy, we also extract structured underwriting rules like DSCR, LTV, and eligibility criteria using an LLM and store them separately for efficient querying. This architecture keeps uploads responsive, supports background processing, and provides scalable, high-quality semantic search.
 
 **Why generic chunking fails for financial documents:**
 
@@ -334,150 +343,27 @@ Standard RAG (Retrieve, Augment, Generate) retrieves relevant text chunks from a
 
 CapitalScale's RAG is **domain-aware and deterministic**.
 
-### Pipeline Stage 1: Document Loading (`services/ocr/`)
-
-```python
-# document_loader.py — Strategy Pattern (Open/Closed Principle)
-async def process_document(file_bytes, filename, mime_type) -> DocumentResult:
-    if mime_type.startswith("image/"):
-        extractor = PaddleOcrExtractor()
-    elif mime_type == "application/pdf":
-        fallback = ScannedPdfOcrExtractor()  # PaddleOCR as fallback
-        extractor = PdfPlumberExtractor(fallback_extractor=fallback)
-    return await extractor.extract(file_bytes, filename)
-```
-
-**Native vs Scanned PDF detection:**
-
-```python
-avg_chars_per_page = native_chars / result.page_count
-if avg_chars_per_page >= 50:
-    result.pdf_type = "native"  # pdfplumber extracted successfully
-else:
-    # Fallback to PaddleOCR — it's a scanned image inside a PDF wrapper
-    return await self.fallback_extractor.extract(file_bytes, filename)
-```
-
-**Why `asyncio.to_thread()` for pdfplumber?**
-pdfplumber is synchronous and CPU-bound. Calling it directly in an async FastAPI handler would block the entire event loop — no other HTTP requests could be served for the 5 seconds it takes to parse a PDF. `asyncio.to_thread()` pushes it to the ThreadPoolExecutor.
-
-### Pipeline Stage 2: Domain-Aware Chunking (`services/rag/chunking/`)
-
-**The ChunkingStrategyFactory** selects the right algorithm based on document type:
-
-**BankPolicySemanticStrategy (the most important one):**
-
-```python
-# 0 token overlap — structural integrity guarantees we don't need it
-# Exception gluing — deterministically attaches caveats to parent rules
-
-def _glue_exceptions(blocks):
-    glued = []
-    for block in blocks:
-        first_word = block.lower().split()[0] if block.split() else ""
-        if first_word in {"exception:", "note:", "however,", "provided"} and glued:
-            glued[-1] += "\n" + block  # Attach to parent rule
-        else:
-            glued.append(block)
-    return glued
-```
-
-**FinancialTableStrategy (for bank statements):**
-
-```python
-# group_table_rows detects tabular content and prevents mid-row splits
-def group_table_rows(lines):
-    # If a line contains | or \t or double-space: it's a table row
-    # Keep grouping until we hit a non-table line
-```
-
-**Orphan merging:**
-Any chunk < 40 tokens (`CARRY_FORWARD_MAX_TOKENS`) is merged into the next chunk. This prevents isolated page numbers, footnotes, or single-word lines from becoming their own vector embedding — which would pollute retrieval results.
-
-### Pipeline Stage 3: Embedding & Storage
-
-```python
-# All embedding calls route through llm_facade.embed()
-# This enforces the shared rate limiter — prevents quota exhaustion
-embedding = await llm_facade.embed(chunk_text)  # 768-dim vector
-
-# pgvector storage
-await pgvector_service.store_chunks(chunks_with_embeddings)
-```
-
-**HNSW Index** (Hierarchical Navigable Small World):
-
-```sql
-CREATE INDEX idx_doc_emb_vector_hnsw ON document_embeddings
-USING hnsw (embedding vector_cosine_ops)
-WITH (m = 16, ef_construction = 64);
-```
-
-This gives approximate nearest-neighbor search in O(log n) instead of O(n) — critical for fast retrieval across millions of chunks.
-
-### Pipeline Stage 4: Retrieval (`services/rag/retrieval_service.py`)
-
+**Query Embedding Cache** — These 6 questions are embedded once and cached in `query_embedding_cache` PostgreSQL table. On every assessment, the system fetches cached vectors instead of calling the Gemini API 6 times.
 For underwriting, the system retrieves evidence for **6 standard financial questions** in parallel:
 
-```python
-UNDERWRITING_QUESTIONS = {
-    "annual_revenue": { "text": "What is the annual revenue?", "document_types": ["balance_sheets", "itr"] },
-    "cash_flow":      { "text": "What is the average monthly balance?", "document_types": ["bank_statements"] },
-    "policy_compliance": { "text": "What are the loan eligibility rules?", "document_types": ["bank_policy"] },
-    # ... 3 more questions
-}
-```
-
-**Query Embedding Cache** — These 6 questions are embedded once and cached in `query_embedding_cache` PostgreSQL table. On every assessment, the system fetches cached vectors instead of calling the Gemini API 6 times.
+| Key | Question | Document types |
+| --- | --- | --- |
+| `annual_revenue` | What is the annual revenue? | `["balance_sheets", "itr"]` |
+| `cash_flow` | What is the average monthly balance? | `["bank_statements"]` |
+| `policy_compliance` | What are the loan eligibility rules? | `["bank_policy"]` |
+| `loan_amount_requested` | What amount is being requested for the loan? | `["loan_application", "bank_policy"]` |
+| `debt_service_coverage` | What is the borrower’s debt service coverage ratio and repayment capacity? | `["bank_statements", "itr"]` |
+| `business_stability` | How stable is the business and how long has it been operating? | `["itr", "bank_policy", "gst_registration"]` |
 
 **Contiguous chunk merging:**
-
-```python
-# If chunks 4, 5, 6 from the same page are retrieved separately,
-# merge them back together before sending to LLM
-if same_doc and same_page and curr_idx == prev_idx + 1:
-    current_group.append(curr)
-```
-
 This gives the LLM unbroken context instead of fragmented snippets.
 
-### Pipeline Stage 5: CrossEncoder Re-Ranking
+**CrossEncoder Re-Ranking**
 
-```python
-# reranker.py
-async def rerank_chunks(self, query, chunks, top_k=3):
-    # Prepare (query, chunk_text) pairs
-    pairs = [[query, chunk["text"]] for chunk in chunks]
-
-    # Run CrossEncoder.predict() in thread pool (blocking CPU-bound operation)
-    scores = await asyncio.to_thread(model.predict, pairs)
-
-    # Sort by ML relevance score
-    reranked = sorted(chunks, key=lambda x: x["rerank_score"], reverse=True)
-    return reranked[:top_k]
-```
-
-**Vector search (cosine distance)** is excellent at finding topically related chunks.
-**CrossEncoder** evaluates the specific (query, chunk) pair and scores actual contextual relevance — catching cases where a chunk is topically adjacent but not answering the specific question.
+- Vector search (cosine distance) is excellent at finding topically related chunks.
+- CrossEncoder evaluates the specific (query, chunk) pair and scores actual contextual relevance — catching cases where a chunk is topically adjacent but not answering the specific question.
 
 **Why is this important for interviews?** It demonstrates knowledge that production RAG requires more than just "embed + cosine search." The two-stage retrieval pattern (broad vector → precise reranking) is a well-known industry best practice.
-
-### Pipeline Stage 6: LLM Synthesis
-
-Final context: merged, re-ranked chunks with provenance tags:
-
-```
-[Evidence Source: ITR_2023.pdf | Type: itr]
-Annual Turnover (FY 2023): ₹2,40,00,000
-Net Profit After Tax: ₹18,50,000
-
----
-
-[Evidence Source: BankStatement_SBI.pdf | Type: bank_statements]
-Average Monthly Balance (Jan-Jun 2024): ₹3,42,000
-```
-
-The LLM receives this structured, sourced context and generates the extraction result or underwriting decision — strictly grounded in the provided evidence.
 
 ---
 
